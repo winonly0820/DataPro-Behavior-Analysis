@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>用户画像标签可视化与实时订单监测</title>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: "Microsoft YaHei", Arial, sans-serif;
+            background: #f5f7fa;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            margin-bottom: 20px;
+            background: linear-gradient(135deg, #2563eb, #3b82f6);
+            color: #fff;
+            padding: 24px;
+            border-radius: 10px;
+        }
+
+        .header h1 {
+            margin: 0 0 10px 0;
+            font-size: 28px;
+        }
+
+        .header div {
+            font-size: 14px;
+            opacity: 0.95;
+        }
+
+        .section {
+            margin-bottom: 24px;
+            background: #fff;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
+        }
+
+        .section-title {
+            margin: 0 0 16px 0;
+            font-size: 22px;
+            color: #222;
+        }
+
+        .toolbar {
+            margin-bottom: 20px;
+            background: #f9fafb;
+            padding: 16px;
+            border-radius: 8px;
+            border: 1px solid #e5e7eb;
+        }
+
+        select {
+            width: 260px;
+            height: 36px;
+            font-size: 15px;
+            padding: 0 8px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            background: #fff;
+        }
+
+        #chart {
+            width: 100%;
+            height: 520px;
+            background: #fff;
+            border-radius: 8px;
+        }
+
+        .order-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+
+        .order-card {
+            background: linear-gradient(135deg, #f8fafc, #eef2ff);
+            border: 1px solid #e5e7eb;
+            border-radius: 10px;
+            padding: 18px;
+            min-height: 105px;
+        }
+
+        .order-card-title {
+            font-size: 14px;
+            color: #6b7280;
+            margin-bottom: 10px;
+        }
+
+        .order-card-value {
+            font-size: 26px;
+            font-weight: bold;
+            color: #1d4ed8;
+            word-break: break-all;
+        }
+
+        .order-card-sub {
+            margin-top: 8px;
+            font-size: 12px;
+            color: #6b7280;
+        }
+
+        #orderChart {
+            width: 100%;
+            height: 360px;
+            background: #fff;
+            border-radius: 8px;
+        }
+
+        .status {
+            margin-top: 12px;
+            font-size: 13px;
+            color: #666;
+        }
+
+        .ok {
+            color: #059669;
+            font-weight: bold;
+        }
+
+        .error {
+            color: #dc2626;
+            font-weight: bold;
+        }
+
+        @media (max-width: 1000px) {
+            .order-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        @media (max-width: 600px) {
+            .order-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .header h1 {
+                font-size: 22px;
+            }
+
+            select {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+<div class="container">
+
+    <div class="header">
+        <h1>用户画像标签可视化与实时订单监测平台</h1>
+        <div>融合 Hive 标签分布统计与 Spark Streaming 实时订单统计结果展示</div>
+    </div>
+
+    <!-- 一、保留你原来的标签查询可视化 -->
+    <div class="section">
+        <h2 class="section-title">用户画像标签分布可视化</h2>
+        <div style="margin-bottom: 14px; color: #666;">
+            数据来源：Hive 表 dashboard_core_label_distribution_59
+        </div>
+
+        <div class="toolbar">
+            <label for="parentLabelSelect">选择一级标签：</label>
+            <select id="parentLabelSelect"></select>
+        </div>
+
+        <div id="chart"></div>
+
+        <div class="status" id="labelStatus">
+            标签分布状态：等待加载
+        </div>
+    </div>
+
+    <!-- 二、新增 Redis 实时订单统计 -->
+    <div class="section">
+        <h2 class="section-title">实时订单统计</h2>
+        <div style="margin-bottom: 14px; color: #666;">
+            数据来源：Kafka → Spark Structured Streaming → Redis
+        </div>
+
+        <div class="order-grid">
+            <div class="order-card">
+                <div class="order-card-title">累计订单量</div>
+                <div class="order-card-value" id="totalOrderCount">--</div>
+                <div class="order-card-sub">Spark 已累计消费订单数</div>
+            </div>
+
+            <div class="order-card">
+                <div class="order-card-title">累计销售额</div>
+                <div class="order-card-value" id="totalSalesAmount">--</div>
+                <div class="order-card-sub">所有批次销售额合计</div>
+            </div>
+
+            <div class="order-card">
+                <div class="order-card-title">累计平均金额</div>
+                <div class="order-card-value" id="totalAvgCost">--</div>
+                <div class="order-card-sub">累计销售额 / 累计订单量</div>
+            </div>
+
+            <div class="order-card">
+                <div class="order-card-title">最新批次订单量</div>
+                <div class="order-card-value" id="latestBatchOrderCount">--</div>
+                <div class="order-card-sub">最近一次模拟生成批次</div>
+            </div>
+
+            <div class="order-card">
+                <div class="order-card-title">最新批次销售额</div>
+                <div class="order-card-value" id="latestBatchSalesAmount">--</div>
+                <div class="order-card-sub">最新批次订单金额合计</div>
+            </div>
+
+            <div class="order-card">
+                <div class="order-card-title">最新批次平均金额</div>
+                <div class="order-card-value" id="latestBatchAvgCost">--</div>
+                <div class="order-card-sub">最新批次平均消费金额</div>
+            </div>
+
+            <div class="order-card">
+                <div class="order-card-title">最新批次号</div>
+                <div class="order-card-value" id="latestBatchId" style="font-size: 18px;">--</div>
+                <div class="order-card-sub">mock_batch_id</div>
+            </div>
+
+            <div class="order-card">
+                <div class="order-card-title">更新时间</div>
+                <div class="order-card-value" id="updateTime" style="font-size: 18px;">--</div>
+                <div class="order-card-sub">Redis 最新写入时间</div>
+            </div>
+        </div>
+
+        <div id="orderChart"></div>
+
+        <div class="status" id="orderStatus">
+            实时订单统计状态：等待加载
+        </div>
+    </div>
+
+</div>
+
+<script>
+    /*
+     * 一、原来的标签分布查询逻辑
+     * 保留原来的两个接口：
+     * /api/dashboard/label/parents
+     * /api/dashboard/label/distribution?parentLabel=xxx
+     */
+    const chartDom = document.getElementById('chart');
+    const chart = echarts.init(chartDom);
+    const select = document.getElementById('parentLabelSelect');
+
+    async function loadParentLabels() {
+        try {
+            const response = await fetch('/api/dashboard/label/parents');
+            const parents = await response.json();
+
+            select.innerHTML = '';
+
+            parents.forEach(parent => {
+                const option = document.createElement('option');
+                option.value = parent;
+                option.textContent = parent;
+                select.appendChild(option);
+            });
+
+            if (parents.length > 0) {
+                loadDistribution(parents[0]);
+                document.getElementById('labelStatus').innerHTML =
+                    '标签分布状态：<span class="ok">一级标签加载成功</span>';
+            } else {
+                document.getElementById('labelStatus').innerHTML =
+                    '标签分布状态：<span class="error">未查询到一级标签</span>';
+            }
+        } catch (error) {
+            console.error(error);
+            document.getElementById('labelStatus').innerHTML =
+                '标签分布状态：<span class="error">一级标签接口请求失败</span>';
+        }
+    }
+
+    async function loadDistribution(parentLabel) {
+        try {
+            const url = '/api/dashboard/label/distribution?parentLabel=' + encodeURIComponent(parentLabel);
+            const response = await fetch(url);
+            const data = await response.json();
+
+            const labels = data.map(item => item.label);
+            const values = data.map(item => item.userCount);
+
+            const option = {
+                title: {
+                    text: parentLabel + '分布',
+                    left: 'center'
+                },
+                tooltip: {
+                    trigger: 'axis',
+                    axisPointer: {
+                        type: 'shadow'
+                    }
+                },
+                grid: {
+                    left: '5%',
+                    right: '5%',
+                    bottom: '12%',
+                    containLabel: true
+                },
+                xAxis: {
+                    type: 'category',
+                    data: labels,
+                    axisLabel: {
+                        interval: 0,
+                        rotate: 25
+                    }
+                },
+                yAxis: {
+                    type: 'value',
+                    name: '用户数量'
+                },
+                series: [
+                    {
+                        name: '用户数量',
+                        type: 'bar',
+                        data: values,
+                        label: {
+                            show: true,
+                            position: 'top'
+                        },
+                        barMaxWidth: 48
+                    }
+                ]
+            };
+
+            chart.setOption(option);
+
+            document.getElementById('labelStatus').innerHTML =
+                '标签分布状态：<span class="ok">' + parentLabel + ' 加载成功</span>';
+        } catch (error) {
+            console.error(error);
+            document.getElementById('labelStatus').innerHTML =
+                '标签分布状态：<span class="error">标签分布接口请求失败</span>';
+        }
+    }
+
+    select.addEventListener('change', function () {
+        loadDistribution(this.value);
+    });
+
+    /*
+     * 二、Redis 实时订单统计逻辑
+     * 依赖接口：
+     * /api/order/dashboard
+     */
+    const orderChart = echarts.init(document.getElementById('orderChart'));
+
+    function loadOrderDashboard() {
+        fetch('/api/order/dashboard')
+            .then(response => response.json())
+            .then(result => {
+                if (result.code !== 200) {
+                    document.getElementById('orderStatus').innerHTML =
+                        '实时订单统计状态：<span class="error">' + result.message + '</span>';
+                    return;
+                }
+
+                const data = result.data || {};
+
+                const totalOrderCount = Number(data.totalOrderCount || 0);
+                const totalSalesAmount = Number(data.totalSalesAmount || 0);
+                const totalAvgCost = Number(data.totalAvgCost || 0);
+
+                const latestBatchOrderCount = Number(data.latestBatchOrderCount || 0);
+                const latestBatchSalesAmount = Number(data.latestBatchSalesAmount || 0);
+                const latestBatchAvgCost = Number(data.latestBatchAvgCost || 0);
+
+                document.getElementById('totalOrderCount').innerText = totalOrderCount;
+                document.getElementById('totalSalesAmount').innerText = totalSalesAmount.toFixed(2);
+                document.getElementById('totalAvgCost').innerText = totalAvgCost.toFixed(2);
+
+                document.getElementById('latestBatchOrderCount').innerText = latestBatchOrderCount;
+                document.getElementById('latestBatchSalesAmount').innerText = latestBatchSalesAmount.toFixed(2);
+                document.getElementById('latestBatchAvgCost').innerText = latestBatchAvgCost.toFixed(2);
+
+                document.getElementById('latestBatchId').innerText = data.latestBatchId || '--';
+                document.getElementById('updateTime').innerText = data.updateTime || '--';
+
+                renderOrderChart(
+                    totalOrderCount,
+                    totalSalesAmount,
+                    totalAvgCost,
+                    latestBatchOrderCount,
+                    latestBatchSalesAmount,
+                    latestBatchAvgCost
+                );
+
+                document.getElementById('orderStatus').innerHTML =
+                    '实时订单统计状态：<span class="ok">Redis 数据加载成功，页面每 5 秒自动刷新</span>';
+            })
+            .catch(error => {
+                console.error(error);
+                document.getElementById('orderStatus').innerHTML =
+                    '实时订单统计状态：<span class="error">接口请求失败，请检查 /api/order/dashboard</span>';
+            });
+    }
+
+    function renderOrderChart(
+        totalOrderCount,
+        totalSalesAmount,
+        totalAvgCost,
+        latestBatchOrderCount,
+        latestBatchSalesAmount,
+        latestBatchAvgCost
+    ) {
+        const option = {
+            title: {
+                text: '累计统计与最新批次统计对比',
+                left: 'center'
+            },
+            tooltip: {
+                trigger: 'axis'
+            },
+            legend: {
+                bottom: 0
+            },
+            grid: {
+                left: '5%',
+                right: '5%',
+                bottom: '14%',
+                containLabel: true
+            },
+            xAxis: {
+                type: 'category',
+                data: ['订单量', '销售额', '平均金额']
+            },
+            yAxis: {
+                type: 'value'
+            },
+            series: [
+                {
+                    name: '累计统计',
+                    type: 'bar',
+                    data: [
+                        totalOrderCount,
+                        totalSalesAmount,
+                        totalAvgCost
+                    ],
+                    barMaxWidth: 42
+                },
+                {
+                    name: '最新批次',
+                    type: 'bar',
+                    data: [
+                        latestBatchOrderCount,
+                        latestBatchSalesAmount,
+                        latestBatchAvgCost
+                    ],
+                    barMaxWidth: 42
+                }
+            ]
+        };
+
+        orderChart.setOption(option);
+    }
+
+    window.addEventListener('resize', function () {
+        chart.resize();
+        orderChart.resize();
+    });
+
+    loadParentLabels();
+    loadOrderDashboard();
+    setInterval(loadOrderDashboard, 5000);
+</script>
+
+</body>
+</html>

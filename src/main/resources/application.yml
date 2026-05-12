@@ -1,0 +1,20 @@
+server:
+  port: 8080
+
+spring:
+  datasource:
+    driver-class-name: org.apache.hive.jdbc.HiveDriver
+    url: jdbc:hive2://127.0.0.1:10000/datapro_primary
+    username: root
+    password:
+    hikari:
+      maximum-pool-size: 2
+      minimum-idle: 0
+      connection-timeout: 5000
+      initialization-fail-timeout: -1
+
+  redis:
+    host: 127.0.0.1
+    port: 6379
+    database: 0
+    timeout: 5000

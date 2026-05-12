@@ -2,64 +2,114 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
-                             http://maven.apache.org/xsd/maven-4.0.0.xsd">
+                             https://maven.apache.org/xsd/maven-4.0.0.xsd">
+
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>org.example</groupId>
-    <artifactId>DataPro-Behavior-Analysis</artifactId>
+    <!-- Spring Boot 父工程 -->
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>2.7.18</version>
+        <relativePath/>
+    </parent>
+
+    <groupId>com.mori</groupId>
+    <artifactId>visual-api</artifactId>
     <version>1.0-SNAPSHOT</version>
+    <packaging>jar</packaging>
 
     <properties>
-        <!-- 使用 Scala 2.12（Spark 3.x 默认） -->
-        <scala.version>2.12.15</scala.version>
-
-        <!-- 使用 Spark 3.3.0（Windows Maven 可下载） -->
-        <spark.version>3.3.0</spark.version>
-
+        <java.version>1.8</java.version>
         <maven.compiler.source>1.8</maven.compiler.source>
         <maven.compiler.target>1.8</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+
+        <scala.version>2.12.18</scala.version>
+        <spark.version>3.5.4</spark.version>
     </properties>
 
     <dependencies>
 
-        <!-- Spark Core -->
+        <!-- Spring Boot Web：提供 Controller 接口和静态页面访问 -->
         <dependency>
-            <groupId>org.apache.spark</groupId>
-            <artifactId>spark-core_2.12</artifactId>
-            <version>${spark.version}</version>
-            <scope>provided</scope>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
 
-        <!-- Spark SQL -->
+        <!-- Spring JDBC：提供 JdbcTemplate，用来查询 Hive -->
         <dependency>
-            <groupId>org.apache.spark</groupId>
-            <artifactId>spark-sql_2.12</artifactId>
-            <version>${spark.version}</version>
-            <scope>provided</scope>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-jdbc</artifactId>
         </dependency>
 
-        <!-- Spark Hive -->
+        <!-- Hive JDBC：连接 HiveServer2，访问 dashboard_core_label_distribution_59 -->
         <dependency>
-            <groupId>org.apache.spark</groupId>
-            <artifactId>spark-hive_2.12</artifactId>
-            <version>${spark.version}</version>
-            <scope>provided</scope>
+            <groupId>org.apache.hive</groupId>
+            <artifactId>hive-jdbc</artifactId>
+            <version>3.1.3</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.eclipse.jetty</groupId>
+                    <artifactId>jetty-runner</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
 
-        <!-- Elasticsearch Spark Connector（Scala 2.12） -->
+        <!-- Redis Jedis：你的 OrderDashboardController 正在使用 redis.clients.jedis.Jedis -->
         <dependency>
-            <groupId>org.elasticsearch</groupId>
-            <artifactId>elasticsearch-spark-20_2.12</artifactId>
-            <version>7.17.10</version>
+            <groupId>redis.clients</groupId>
+            <artifactId>jedis</artifactId>
+            <version>4.4.3</version>
         </dependency>
 
-        <!-- Scala 标准库（provided，避免冲突） -->
+        <!-- Scala 标准库：编译 src/main/scala 下面的 Scala 程序 -->
         <dependency>
             <groupId>org.scala-lang</groupId>
             <artifactId>scala-library</artifactId>
             <version>${scala.version}</version>
-            <scope>provided</scope>
+        </dependency>
+
+        <!-- Spark Core：编译 Spark 程序 -->
+        <dependency>
+            <groupId>org.apache.spark</groupId>
+            <artifactId>spark-core_2.12</artifactId>
+            <version>${spark.version}</version>
+        </dependency>
+
+        <!-- Spark SQL：用于 DataFrame、Spark SQL、Structured Streaming -->
+        <dependency>
+            <groupId>org.apache.spark</groupId>
+            <artifactId>spark-sql_2.12</artifactId>
+            <version>${spark.version}</version>
+        </dependency>
+
+        <!-- Spark Kafka Connector：用于 KafkaToRedis 这类 Structured Streaming 程序 -->
+        <dependency>
+            <groupId>org.apache.spark</groupId>
+            <artifactId>spark-sql-kafka-0-10_2.12</artifactId>
+            <version>${spark.version}</version>
+        </dependency>
+
+        <!-- Elasticsearch Spark Connector：用于 ES 与 Spark/Hive 数据同步 -->
+        <dependency>
+            <groupId>org.elasticsearch</groupId>
+            <artifactId>elasticsearch-spark-30_2.12</artifactId>
+            <version>7.17.10</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.apache.spark</groupId>
+                    <artifactId>spark-core_2.12</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.apache.spark</groupId>
+                    <artifactId>spark-sql_2.12</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.scala-lang</groupId>
+                    <artifactId>scala-library</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
 
     </dependencies>
@@ -67,54 +117,52 @@
     <build>
         <plugins>
 
-            <!-- Scala 编译插件 -->
+            <!-- Java 编译插件 -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.10.1</version>
+                <configuration>
+                    <source>1.8</source>
+                    <target>1.8</target>
+                    <encoding>UTF-8</encoding>
+                </configuration>
+            </plugin>
+
+            <!-- Scala 编译插件：让 src/main/scala 下的代码能正常编译 -->
             <plugin>
                 <groupId>net.alchim31.maven</groupId>
                 <artifactId>scala-maven-plugin</artifactId>
-                <version>4.5.6</version>
+                <version>4.8.1</version>
+                <configuration>
+                    <scalaVersion>${scala.version}</scalaVersion>
+                </configuration>
                 <executions>
                     <execution>
+                        <id>scala-compile-first</id>
+                        <phase>process-resources</phase>
                         <goals>
+                            <goal>add-source</goal>
                             <goal>compile</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>scala-test-compile</id>
+                        <phase>process-test-resources</phase>
+                        <goals>
                             <goal>testCompile</goal>
                         </goals>
                     </execution>
                 </executions>
             </plugin>
 
-            <!-- 使用 maven-shade-plugin 打包 fat-jar -->
+            <!-- Spring Boot 打包插件：启动类是 com.mori.VisualApiApplication -->
             <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-shade-plugin</artifactId>
-                <version>3.4.1</version>
-                <executions>
-                    <execution>
-                        <phase>package</phase>
-                        <goals>
-                            <goal>shade</goal>
-                        </goals>
-                        <configuration>
-                            <createDependencyReducedPom>false</createDependencyReducedPom>
-                            <transformers>
-                                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-                                    <mainClass>com.mori.es2hive.EsToHive</mainClass>
-                                </transformer>
-                            </transformers>
-
-                            <!-- 排除 Spark 与 Scala（运行时提供） -->
-                            <filters>
-                                <filter>
-                                    <artifact>*:*</artifact>
-                                    <excludes>
-                                        <exclude>org/apache/spark/**</exclude>
-                                        <exclude>scala/**</exclude>
-                                        <exclude>org/scala-lang/**</exclude>
-                                    </excludes>
-                                </filter>
-                            </filters>
-                        </configuration>
-                    </execution>
-                </executions>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <mainClass>com.mori.VisualApiApplication</mainClass>
+                </configuration>
             </plugin>
 
         </plugins>
